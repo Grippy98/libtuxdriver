@@ -518,3 +518,4 @@ MigrationBackup/
 
 obj/
 win32/libtuxdriver.def
+test/api_key.txt

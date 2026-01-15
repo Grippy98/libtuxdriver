@@ -36,6 +36,7 @@
 #define FRAME_HEADER_AUDIO              0xCC
 #define FRAME_HEADER_FLASH_PROG         0xCD
 #define FRAME_HEADER_LED                0xCE
+#define FRAME_HEADER_WAKEUP             0xB6
 #define FRAME_HEADER_PONG               0xFF
 
 typedef enum
@@ -56,6 +57,30 @@ typedef enum
     ID_FRAME_HEADER_FLASH_PROG = 13,
     ID_FRAME_HEADER_LED = 14,
     ID_FRAME_HEADER_PONG = 15,
+    ID_FRAME_HEADER_WAKEUP = 16,
+} _HW_STATUS_FRAME_ID_;
+
+#define FRAME_HEADER_COUNT              17
+
+typedef enum
+{
+    ID_FRAME_HEADER_PORTS_H = 0,
+    ID_FRAME_HEADER_SENSORS1_H = 1,
+    ID_FRAME_HEADER_LIGHT_H = 2,
+    ID_FRAME_HEADER_POSITION1_H = 3,
+    ID_FRAME_HEADER_POSITION2_H = 4,
+    ID_FRAME_HEADER_IR_H = 5,
+    ID_FRAME_HEADER_ID_H = 6,
+    ID_FRAME_HEADER_BATTERY_H = 7,
+    ID_FRAME_HEADER_VERSION_H = 8,
+    ID_FRAME_HEADER_REVISION_H = 9,
+    ID_FRAME_HEADER_AUTHOR_H = 10,
+    ID_FRAME_HEADER_SOUND_VAR_H = 11,
+    ID_FRAME_HEADER_AUDIO_H = 12,
+    ID_FRAME_HEADER_FLASH_PROG_H = 13,
+    ID_FRAME_HEADER_LED_H = 14,
+    ID_FRAME_HEADER_PONG_H = 15,
+    ID_FRAME_HEADER_WAKEUP_H = 16,
 } headers_id_t;
 
 typedef unsigned char _BIT_;
@@ -351,7 +376,7 @@ typedef struct
 } hw_status_table_t;
 
 extern hw_status_table_t hw_status_table;
-extern unsigned char tux_hw_status_header_counter[16];
+extern unsigned char tux_hw_status_header_counter[17];
 
 extern void tux_hw_status_init(void);
 extern int tux_hw_status_parse_frame(const unsigned char *frame);

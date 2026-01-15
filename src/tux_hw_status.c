@@ -25,8 +25,8 @@
 #include "tux_misc.h"
 
 LIBLOCAL hw_status_table_t hw_status_table;
-LIBLOCAL unsigned char tux_hw_status_header_counter[16] = { 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+LIBLOCAL unsigned char tux_hw_status_header_counter[17] = { 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 static int parse_body_ports(const unsigned char *frame);
 static int parse_body_sensors1(const unsigned char *frame);
@@ -109,6 +109,9 @@ tux_hw_status_parse_frame(const unsigned char *frame)
     case FRAME_HEADER_PONG:
         tux_hw_status_header_counter[ID_FRAME_HEADER_PONG]++;
         return parse_body_pong(frame);
+    case FRAME_HEADER_WAKEUP:
+        tux_hw_status_header_counter[ID_FRAME_HEADER_WAKEUP]++;
+        return FRAME_HEADER_WAKEUP;
     default:
         return -1;
     }
