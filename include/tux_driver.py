@@ -207,7 +207,7 @@ class TuxDrv(object):
             return E_TUXDRV_PARSERISDISABLED
             
         ret = self.tux_driver_lib.TuxDrv_PerformCommand(c_double(delay), 
-                c_char_p(command))
+                c_char_p(command.encode('utf-8')))
         
         return ret
             
@@ -215,7 +215,7 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return E_TUXDRV_PARSERISDISABLED
             
-        ret = self.tux_driver_lib.TuxDrv_PerformMacroFile(c_char_p(file_path))
+        ret = self.tux_driver_lib.TuxDrv_PerformMacroFile(c_char_p(file_path.encode('utf-8')))
         
         return ret
             
@@ -223,7 +223,7 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return E_TUXDRV_PARSERISDISABLED
             
-        ret = self.tux_driver_lib.TuxDrv_PerformMacroText(c_char_p(macro))
+        ret = self.tux_driver_lib.TuxDrv_PerformMacroText(c_char_p(macro.encode('utf-8')))
         
         return ret
             
@@ -239,7 +239,7 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return E_TUXDRV_BUSY
             
-        ret = self.tux_driver_lib.TuxDrv_SoundReflash(c_char_p(tracks))
+        ret = self.tux_driver_lib.TuxDrv_SoundReflash(c_char_p(tracks.encode('utf-8')))
         
         return ret
             
@@ -324,6 +324,11 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return []
             
+        if isinstance(status, bytes):
+            try:
+                status = status.decode('utf-8')
+            except:
+                status = str(status)
         result = status.split(":")
         if len(result) == 1:
             if result[0] == '':
@@ -384,14 +389,14 @@ if __name__ == "__main__":
     
     def on_status_event(status):
         status_struct =  tux_drv.GetStatusStruct(status)
-        print status_struct
+        print(status_struct)
         
     def on_dongle_connected():
         tux_drv.ResetPositions()
-        print tux_drv.GetAllStatusState()
-        print tux_drv.GetStatusName(0)
-        print tux_drv.GetStatusValue(0)
-        print tux_drv.GetStatusState(0)
+        print(tux_drv.GetAllStatusState())
+        print(tux_drv.GetStatusName(0))
+        print(tux_drv.GetStatusValue(0))
+        print(tux_drv.GetStatusState(0))
 
     if os.name == 'nt':
         tux_drv = TuxDrv('../win32/libtuxdriver.dll')
