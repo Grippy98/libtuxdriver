@@ -260,7 +260,7 @@ tux_usb_write(const void *buff)
 
     if (!tux_usb_connected())
     {
-        log_error("Fux USB device not connected");
+        log_error("Tux USB device not connected");
         return TuxUSBNotConnected;
     }
 
@@ -407,7 +407,7 @@ tux_usb_read(void *buf)
 
     if (!tux_usb_connected())
     {
-        log_warning("Fux USB device not connected");
+        log_warning("Tux USB device not connected");
         return TuxUSBNotConnected;
     }
 
