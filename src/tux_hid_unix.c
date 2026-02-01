@@ -27,26 +27,25 @@
 
 #ifndef WIN32
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <asm/types.h>
 #include <fcntl.h>
+#include <linux/hidraw.h>
+#include <linux/input.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <linux/hiddev.h>
 
-#include <string.h>
 #include <dirent.h>
+#include <string.h>
 
 #include "tux_hid_unix.h"
 #include "tux_misc.h"
 
 static int tux_device_hdl = -1;
 static char tux_device_path[256] = "";
-static struct hiddev_usage_ref uref_out;
-static struct hiddev_report_info rinfo_out;
 
 /**
  * \brief Search the HID dongle in a "dev" path.
@@ -55,78 +54,57 @@ static struct hiddev_report_info rinfo_out;
  * \param product_id Dongle product ID.
  * \return true or false
  */
-static bool
-find_dongle_from_path(const char *path, int vendor_id, int product_id)
-{
-    DIR* dir;
-    struct dirent *dinfo;
-    int fd = -1;
-    char device_path[256] = "";
-    struct hiddev_devinfo device_info;
-    int err;
+static bool find_dongle_from_path(const char *path, int vendor_id,
+                                  int product_id) {
+  DIR *dir;
+  struct dirent *dinfo;
+  int fd = -1;
+  char device_path[256] = "";
+  struct hidraw_devinfo device_info;
+  int err;
 
-    dir = opendir(path);
-    if (dir != NULL)
-    {
-        while ((dinfo = readdir(dir)) != NULL)
-        {
-            if (strncmp(dinfo->d_name, "hiddev", 6) == 0)
-            {
-                sprintf(device_path, "%s/%s", path, dinfo->d_name);
+  dir = opendir(path);
+  if (dir != NULL) {
+    while ((dinfo = readdir(dir)) != NULL) {
+      if (strncmp(dinfo->d_name, "hidraw", 6) == 0) {
+        sprintf(device_path, "%s/%s", path, dinfo->d_name);
 
-                if ((fd = open(device_path, O_RDONLY)) >= 0)
-                {
-                    err = ioctl(fd, HIDIOCGDEVINFO, &device_info);
-                    if ((device_info.vendor == vendor_id) &&
-                        ((device_info.product & 0xFFFF) == product_id))
-                    {
-                        sprintf(tux_device_path, "%s", device_path);
-                        tux_device_hdl = fd;
+        if ((fd = open(device_path, O_RDWR)) >= 0) {
+          err = ioctl(fd, HIDIOCGRAWINFO, &device_info);
+          if (err == 0) {
+            if ((device_info.vendor == vendor_id) &&
+                ((device_info.product & 0xFFFF) == product_id)) {
+              sprintf(tux_device_path, "%s", device_path);
+              tux_device_hdl = fd;
 
-                        closedir(dir);
+              closedir(dir);
 
-                        return true;
-                    }
-                    else
-                    {
-                        close(fd);
-                    }
-                }
+              return true;
             }
+          }
+          close(fd);
         }
-
-        closedir(dir);
+      }
     }
 
-    return false;
+    closedir(dir);
+  }
+
+  return false;
 }
 
 /**
  * \brief Check if the dongle is still plugged.
  * \return true or false.
  */
-static bool
-check_device_still_plugged(void)
-{
-    FILE *fp;
-
-    if (tux_device_hdl == -1)
-    {
-        return false;
-    }
-    else
-    {
-        fp = fopen(tux_device_path, "r");
-        if (fp)
-        {
-            fclose(fp);
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
+static bool check_device_still_plugged(void) {
+  /* Simple check if fd is valid is not enough, but checking file existence
+     helps if the device node disappears. With hidraw, if the device is
+     unplugged, writes usually fail with ENODEV. */
+  if (tux_device_hdl == -1) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -135,36 +113,24 @@ check_device_still_plugged(void)
  * \param product_id Dongle product ID.
  * \return true or false.
  */
-bool LIBLOCAL
-tux_hid_capture(int vendor_id, int product_id)
-{
-    /* Normal path to scan is /dev/usb */
-    if (find_dongle_from_path("/dev/usb", vendor_id, product_id))
-    {
-        return true;
-    }
+bool LIBLOCAL tux_hid_capture(int vendor_id, int product_id) {
+  /* Scan /dev for hidraw devices */
+  if (find_dongle_from_path("/dev", vendor_id, product_id)) {
+    return true;
+  }
 
-    /* Other possible path to scan is /dev/usb */
-    if (find_dongle_from_path("/dev", vendor_id, product_id))
-    {
-        return true;
-    }
-
-    /* dongle not found */
-    return false;
+  /* dongle not found */
+  return false;
 }
 
 /**
  * \brief Release the access to the HID dongle.
  */
-void LIBLOCAL
-tux_hid_release(void)
-{
-    if (tux_device_hdl != -1)
-    {
-        close(tux_device_hdl);
-        tux_device_hdl = -1;
-    }
+void LIBLOCAL tux_hid_release(void) {
+  if (tux_device_hdl != -1) {
+    close(tux_device_hdl);
+    tux_device_hdl = -1;
+  }
 }
 
 /**
@@ -173,47 +139,38 @@ tux_hid_release(void)
  * \param buffer Data to write.
  * \return The write success.
  */
-bool LIBLOCAL
-tux_hid_write(int size, const char *buffer)
-{
-    int i;
-    int err;
+bool LIBLOCAL tux_hid_write(int size, const char *buffer) {
+  ssize_t res;
+  char *new_buffer;
 
-    if (!check_device_still_plugged())
-    {
-        return false;
-    }
+  if (!check_device_still_plugged()) {
+    return false;
+  }
 
-    rinfo_out.report_type = HID_REPORT_TYPE_OUTPUT;
-    rinfo_out.report_id = HID_REPORT_ID_FIRST;
+  /* Prepend 0x00 for Report ID 0 */
+  new_buffer = (char *)malloc(size + 1);
+  if (new_buffer == NULL) {
+    return false;
+  }
 
-    err = ioctl(tux_device_hdl, HIDIOCGREPORTINFO, &rinfo_out);
-    if (err < 0)
-    {
-        return false;
-    }
+  new_buffer[0] = 0x00;
+  memcpy(new_buffer + 1, buffer, size);
 
-    for(i = 0; i < size; i++)
-    {
-        uref_out.report_type = HID_REPORT_TYPE_OUTPUT;
-        uref_out.report_id   = HID_REPORT_ID_FIRST;
-        uref_out.usage_index = i;
-        uref_out.value = (unsigned char)buffer[i];
+  /* hidraw writes raw bytes */
+  res = write(tux_device_hdl, new_buffer, size + 1);
 
-        err = ioctl(tux_device_hdl,HIDIOCSUSAGE, &uref_out);
-        if (err < 0)
-        {
-            return false;
-        }
-    }
+  free(new_buffer);
 
-    err = ioctl(tux_device_hdl,HIDIOCSREPORT,&rinfo_out);
-    if (err < 0)
-    {
-        return false;
-    }
+  if (res < 0) {
+    return false;
+  }
 
-    return true;
+  if (res != (size + 1)) {
+    /* Partial write ? */
+    return false;
+  }
+
+  return true;
 }
 
 /**
@@ -222,48 +179,21 @@ tux_hid_write(int size, const char *buffer)
  * \param buffer Data buffer.
  * \return The read success.
  */
-bool LIBLOCAL
-tux_hid_read(int size, char *buffer)
-{
-    int i;
-    int err;
+bool LIBLOCAL tux_hid_read(int size, char *buffer) {
+  ssize_t res;
 
-    if (!check_device_still_plugged())
-    {
-        return false;
-    }
+  if (!check_device_still_plugged()) {
+    return false;
+  }
 
-    rinfo_out.report_type = HID_REPORT_TYPE_INPUT;
-    rinfo_out.report_id = HID_REPORT_ID_FIRST;
+  /* hidraw reads raw bytes */
+  res = read(tux_device_hdl, buffer, size);
 
-    err = ioctl(tux_device_hdl, HIDIOCGREPORTINFO, &rinfo_out);
-    if (err < 0)
-    {
-        return false;
-    }
+  if (res < 0) {
+    return false;
+  }
 
-    for (i = 0; i < size; i++)
-    {
-        uref_out.report_type = HID_REPORT_TYPE_INPUT;
-        uref_out.report_id   = HID_REPORT_ID_FIRST;
-        uref_out.usage_index = i;
-
-        err = ioctl(tux_device_hdl, HIDIOCGUCODE, &uref_out);
-        if (err < 0)
-        {
-            return false;
-        }
-
-        err = ioctl(tux_device_hdl, HIDIOCGUSAGE, &uref_out);
-        if (err < 0)
-        {
-            return false;
-        }
-
-        buffer[i] = uref_out.value;
-    }
-
-    return true;
+  return true;
 }
 
 #endif /* Not WIN32 */

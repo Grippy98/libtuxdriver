@@ -207,7 +207,7 @@ class TuxDrv(object):
             return E_TUXDRV_PARSERISDISABLED
             
         ret = self.tux_driver_lib.TuxDrv_PerformCommand(c_double(delay), 
-                c_char_p(command))
+                c_char_p(command.encode('utf-8')))
         
         return ret
             
@@ -215,7 +215,7 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return E_TUXDRV_PARSERISDISABLED
             
-        ret = self.tux_driver_lib.TuxDrv_PerformMacroFile(c_char_p(file_path))
+        ret = self.tux_driver_lib.TuxDrv_PerformMacroFile(c_char_p(file_path.encode('utf-8')))
         
         return ret
             
@@ -223,7 +223,7 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return E_TUXDRV_PARSERISDISABLED
             
-        ret = self.tux_driver_lib.TuxDrv_PerformMacroText(c_char_p(macro))
+        ret = self.tux_driver_lib.TuxDrv_PerformMacroText(c_char_p(macro.encode('utf-8')))
         
         return ret
             
@@ -239,7 +239,7 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return E_TUXDRV_BUSY
             
-        ret = self.tux_driver_lib.TuxDrv_SoundReflash(c_char_p(tracks))
+        ret = self.tux_driver_lib.TuxDrv_SoundReflash(c_char_p(tracks.encode('utf-8')))
         
         return ret
             
@@ -249,7 +249,7 @@ class TuxDrv(object):
             
         idc = c_int(0)
         idcp = pointer(idc)
-        ret = self.tux_driver_lib.TuxDrv_GetStatusId(c_char_p(name), idcp)
+        ret = self.tux_driver_lib.TuxDrv_GetStatusId(c_char_p(name.encode('utf-8')), idcp)
         
         if ret != E_TUXDRV_NOERROR:
             idc.value = -1
@@ -260,13 +260,12 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return "UNDEFINED"
             
-        result = " " * 256
+        result = create_string_buffer(256)
         ret = self.tux_driver_lib.TuxDrv_GetStatusName(c_int(id), 
-            c_char_p(result))
-        result = result.replace(" ", "")
+            result)
         
         if ret == E_TUXDRV_NOERROR:
-            return result
+            return result.value.decode('utf-8').replace(" ", "")
         else:
             return "UNDEFINED"
             
@@ -286,13 +285,12 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return "UNDEFINED"
             
-        result = " " * 256
+        result = create_string_buffer(256)
         ret = self.tux_driver_lib.TuxDrv_GetStatusState(c_int(id), 
-            c_char_p(result))
-        result = result.replace(" ", "")
+            result)
         
         if ret == E_TUXDRV_NOERROR:
-            return result
+            return result.value.decode('utf-8').replace(" ", "")
         else:
             return "UNDEFINED"
             
@@ -300,13 +298,12 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return "UNDEFINED"
             
-        result = " " * 256
+        result = create_string_buffer(256)
         ret = self.tux_driver_lib.TuxDrv_GetStatusValue(c_int(id), 
-            c_char_p(result))
-        result = result.replace(" ", "")
+            result)
         
         if ret == E_TUXDRV_NOERROR:
-            return result
+            return result.value.decode('utf-8').replace(" ", "")
         else:
             return "UNDEFINED"
             
@@ -314,15 +311,17 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return ""
             
-        result = " " * 8182
-        self.tux_driver_lib.TuxDrv_GetAllStatusState(c_char_p(result))
-        result = result.replace(" ", "")
+        result = create_string_buffer(8182)
+        self.tux_driver_lib.TuxDrv_GetAllStatusState(result)
         
-        return result
+        return result.value.decode('utf-8').replace(" ", "")
             
-    def TokenizeStatus(self, status = ""):
+    def TokenizeStatus(self, status):
         if self.tux_driver_lib == None:
             return []
+            
+        if isinstance(status, bytes):
+            status = status.decode('utf-8')
             
         result = status.split(":")
         if len(result) == 1:
@@ -346,7 +345,7 @@ class TuxDrv(object):
         
         return
         
-    def GetStatusStruct(self, status = ""):
+    def GetStatusStruct(self, status):
         result = {
             'name' : "None",
             'value' : None,
@@ -378,20 +377,20 @@ class TuxDrv(object):
             
         result = self.tux_driver_lib.TuxDrv_StrError(c_int(error_code))
         
-        return c_char_p(result).value
+        return c_char_p(result).value.decode('utf-8')
 
 if __name__ == "__main__":
     
     def on_status_event(status):
         status_struct =  tux_drv.GetStatusStruct(status)
-        print status_struct
+        print(status_struct)
         
     def on_dongle_connected():
         tux_drv.ResetPositions()
-        print tux_drv.GetAllStatusState()
-        print tux_drv.GetStatusName(0)
-        print tux_drv.GetStatusValue(0)
-        print tux_drv.GetStatusState(0)
+        print(tux_drv.GetAllStatusState())
+        print(tux_drv.GetStatusName(0))
+        print(tux_drv.GetStatusValue(0))
+        print(tux_drv.GetStatusState(0))
 
     if os.name == 'nt':
         tux_drv = TuxDrv('../win32/libtuxdriver.dll')
