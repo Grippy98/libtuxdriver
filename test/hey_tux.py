@@ -1,13 +1,13 @@
 import sys
 import os
 import queue
-import queue
 import vosk
 import json
-import pyttsx3
 import threading
 import time
 import ctypes
+import random
+import subprocess
 
 # Add include directory to path to find tux_driver.py
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,18 +16,6 @@ sys.path.append(include_dir)
 
 from tux_driver import *
 
-# ALSA Error Suppression
-try:
-    ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
-    def py_error_handler(filename, line, function, err, fmt):
-        pass
-    c_error_handler = ERROR_HANDLER_FUNC(py_error_handler)
-    asound = ctypes.cdll.LoadLibrary('libasound.so')
-    # Set error handler
-    asound.snd_lib_error_set_handler(c_error_handler)
-except Exception:
-    pass
-
 # Audio Config
 SAMPLE_RATE = 16000
 BLOCK_SIZE = 8000
@@ -35,67 +23,122 @@ q = queue.Queue()
 
 # LLM Config
 try:
+    import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    print("Loading SmolLM2-135M-Instruct...")
+    print("Loading SmolLM2-135M-Instruct (Optimizing for low RAM)...")
     checkpoint = "HuggingFaceTB/SmolLM2-135M-Instruct"
     tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-    llm_model = AutoModelForCausalLM.from_pretrained(checkpoint)
+    
+    # Load in bfloat16 to save RAM, move to CPU explicitly
+    llm_model = AutoModelForCausalLM.from_pretrained(
+        checkpoint, 
+        torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True
+    )
+    llm_model.eval() # Disable dropout etc for inference
+    torch.set_grad_enabled(False) # Save memory during generation
     print("LLM Loaded.")
 except Exception as e:
-    print(f"Warning: Could not load LLM: {e}")
+    print(f"Warning: Could not load LLM optimally: {e}")
     llm_model = None
 
-# TTS Engine
-engine = pyttsx3.init()
-engine.setProperty('rate', 150)
+# TTS Config
+# Using espeak via subprocess for better thread performance
 
 # Tux Global State
 tux_drv = None
 mouth_thread = None
 speaking = False
+dongle_connected = False
+link_connected = False
 
-def mouth_animator():
+def on_dongle_connected():
+    global dongle_connected
+    print(">> Dongle Connected!")
+    dongle_connected = True
+
+def on_status_event(status):
+    global link_connected
+    try:
+        status_struct = tux_drv.GetStatusStruct(status)
+        if status_struct['name'] == 'radio_state':
+            if status_struct['value']:
+                print(">> RF Link Established!")
+                link_connected = True
+            else:
+                print(">> RF Link Lost.")
+                link_connected = False
+    except Exception as e:
+        # Fallback to string check if struct fails
+        if isinstance(status, bytes):
+            status = status.decode('utf-8')
+        if "rf_link:CONNECTED" in status or "radio_state:1" in status:
+            print(">> RF Link Established (Fallback)!")
+            link_connected = True
+
+def speech_animator():
     global speaking
     
-    # Wait a bit for audio to start
-    time.sleep(0.2)
-    
+    print(">> Animator Started")
     while speaking:
-        # Open
+        # print(">> Animator Loop") # Debug too much
+        # Open Mouth
         tux_drv.PerformCommand(0, "TUX_CMD:MOUTH:OPEN")
+        
+        # Randomly flap flippers (30% chance)
+        if random.random() < 0.3: 
+             # UP/DOWN is snappier than the macro ON command for doing it while speaking
+             if random.random() < 0.5:
+                 tux_drv.PerformCommand(0, "TUX_CMD:FLIPPERS:UP")
+             else:
+                 tux_drv.PerformCommand(0, "TUX_CMD:FLIPPERS:DOWN")
+             
+        # Randomly blink eyes (20% chance)
+        if random.random() < 0.2: 
+             tux_drv.PerformCommand(0, "TUX_CMD:EYES:CLOSE")
+             time.sleep(0.1)
+             tux_drv.PerformCommand(0, "TUX_CMD:EYES:OPEN")
+
+        # Randomly pulse LEDs (10% chance)
+        if random.random() < 0.1:
+            tux_drv.PerformCommand(0, "TUX_CMD:LED:PULSE:LED_BOTH,4,10,1,1,1,10,1")
+
         time.sleep(0.2)
         if not speaking: break
         
-        # Close
+        # Close Mouth
         tux_drv.PerformCommand(0, "TUX_CMD:MOUTH:CLOSE")
         time.sleep(0.2)
         
-    # Ensure closed
-    tux_drv.PerformCommand(0, "TUX_CMD:MOUTH:CLOSE")
+    # Ensure closed and reset
+    try:
+        tux_drv.PerformCommand(0, "TUX_CMD:MOUTH:CLOSE")
+        tux_drv.PerformCommand(0, "TUX_CMD:FLIPPERS:DOWN")
+        tux_drv.PerformCommand(0, "TUX_CMD:EYES:OPEN")
+        tux_drv.PerformCommand(0, "TUX_CMD:LED:ON:LED_BOTH,1.0")
+    except:
+        pass
 
 def tux_say(text):
     global speaking, mouth_thread
     print(f"Tux says: {text}")
     
     speaking = True
-    mouth_thread = threading.Thread(target=mouth_animator)
+    mouth_thread = threading.Thread(target=speech_animator)
     mouth_thread.start()
     
-    # engine.say blocks? No, engine.runAndWait() blocks.
-    # But we need mouth animation to run in parallel.
-    # pyttsx3 is tricky with threads. Let's try simple say+runAndWait
-    
     try:
-        engine.say(text)
-        engine.runAndWait()
+        # Use espeak-ng command line - s 150 is speed
+        subprocess.run(["espeak-ng", "-s", "150", text], check=True)
     except Exception as e:
         print(f"TTS Error: {e}")
         
     speaking = False
-    mouth_thread.join()
+    if mouth_thread.is_alive():
+        mouth_thread.join()
 
 def main():
-    global tux_drv
+    global tux_drv, dongle_connected, link_connected
     
     # 1. Setup Tux Driver
     lib_path = os.path.join(current_dir, '../unix/libtuxdriver.so')
@@ -104,38 +147,57 @@ def main():
         sys.exit(1)
         
     tux_drv = TuxDrv(lib_path)
-    tux_drv.SetLogLevel(LOG_LEVEL_ERROR)
+    tux_drv.SetLogLevel(LOG_LEVEL_DEBUG) # ENABLE DEBUG LOGS
     
-    print("Starting Tux Driver...")
+    # Setup Callbacks
+    tux_drv.SetDongleConnectedCallback(on_dongle_connected)
+    tux_drv.SetStatusCallback(on_status_event)
+    
+    print("Starting Tux Driver (Waiting for connection)...")
     t = threading.Thread(target=tux_drv.Start)
     t.daemon = True
     t.start()
     
-    # Wait for init
-    time.sleep(4)
+    # 2. Wait for HW connection
+    print("Waiting for Hardware (Check Tux Droid is ON)...")
+    timeout = 15
+    start_wait = time.time()
+    while (not dongle_connected or not link_connected) and (time.time() - start_wait < timeout):
+        time.sleep(0.1)
+        
+    if not dongle_connected:
+        print("FAILED: Dongle not detected. Check USB connection.")
+        sys.exit(1)
+    if not link_connected:
+        print("FAILED: RF Link not established. Is Tux switched ON?")
+        sys.exit(1)
+        
+    print("Hardware Ready. Testing movement...")
     tux_drv.ResetPositions()
+    # Test a simple movement
+    tux_drv.PerformCommand(0, "TUX_CMD:EYES:OPEN")
+    time.sleep(1)
+    tux_drv.PerformCommand(0, "TUX_CMD:EYES:CLOSE")
+    time.sleep(1)
+    tux_drv.PerformCommand(0, "TUX_CMD:EYES:OPEN")
+    print("Movement test complete.")
     
-    # 2. Setup Vosk
-    if not os.path.exists("model"):
-        print("Please download a Vosk model (e.g. vosk-model-small-en-us-0.15) and unpack as 'model' in this folder.")
-        # Attempt Auto Download?
-        try:
-             from vosk import Model, KaldiRecognizer
-             print("Loading Model...")
-             # vosk.Model(lang="en-us") automagically downloads to ~/.cache/vosk
-             model = Model(lang="en-us") 
-        except Exception as e:
-            print(f"Model load error: {e}")
-            sys.exit(1)
-    else:
+    # 3. Setup Vosk
+    try:
         from vosk import Model, KaldiRecognizer
-        model = Model("model")
-
-    rec = KaldiRecognizer(model, SAMPLE_RATE)
+        if not os.path.exists("model"):
+            print("Loading Model (Auto-downloading if necessary)...")
+            model = Model(lang="en-us") 
+        else:
+            model = Model("model")
+        rec = KaldiRecognizer(model, SAMPLE_RATE)
+    except Exception as e:
+        print(f"Vosk error: {e}")
+        sys.exit(1)
 
     # 3. Microhone Loop
     print("\n-----------------------------")
-    print(" LISTENING... Say 'Hey Tux'")
+    print(" LISTENING... Say 'Hey Tux' or 'Pentax'")
     print("-----------------------------\n")
 
     try:
@@ -165,54 +227,51 @@ def main():
                     if found_wake_word:
                         print(f">> Wake Word Detected: '{found_wake_word}' <<")
                         
-                        # Extract prompt (everything after wake word)
-                        # Find end of wake word in string
                         idx = lower_text.find(found_wake_word)
                         prompt = text[idx + len(found_wake_word):].strip()
                         
                         if not prompt:
-                             prompt = "Hello" # Default interaction
+                             prompt = "Hello"
                              
                         print(f"Prompting LLM: {prompt}")
-                        tux_drv.PerformCommand(0, "TUX_CMD:EYES:BLINK")
+                        # OPEN/CLOSE is safer than invalid BLINK
+                        tux_drv.PerformCommand(0, "TUX_CMD:EYES:CLOSE")
+                        time.sleep(0.2)
+                        tux_drv.PerformCommand(0, "TUX_CMD:EYES:OPEN")
                         
-                        try:
-                            # Run LLM generation
-                            messages = [{"role": "user", "content": prompt}]
-                            input_text = tokenizer.apply_chat_template(messages, tokenize=False)
-                            inputs = tokenizer(input_text, return_tensors="pt")
-                            
-                            # Generate
-                            outputs = llm_model.generate(**inputs, max_new_tokens=50) # Keep it short
-                            response_full = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                            
-                            # Extract just the assistant response
-                            # The chat template decode usually includes the history. 
-                            # SmolLM might output the whole thing.
-                            # Basic string splitting to be safe:
-                            response_text = response_full
-                            if "assistant\n" in response_full:
-                                response_text = response_full.split("assistant\n")[-1]
-                            
-                            print(f"LLM Response: {response_text}")
-                            
-                            tux_say(response_text)
-                            
-                        except Exception as e:
-                            print(f"LLM Error: {e}")
-                            tux_say("I am confused.")
+                        if llm_model:
+                            try:
+                                messages = [{"role": "user", "content": prompt}]
+                                input_text = tokenizer.apply_chat_template(messages, tokenize=False)
+                                inputs = tokenizer(input_text, return_tensors="pt")
+                                
+                                outputs = llm_model.generate(**inputs, max_new_tokens=50)
+                                response_full = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                                
+                                response_text = response_full
+                                if "assistant\n" in response_full:
+                                    response_text = response_full.split("assistant\n")[-1]
+                                
+                                print(f"LLM Response: {response_text}")
+                                tux_say(response_text)
+                            except Exception as e:
+                                print(f"LLM Inference Error: {e}")
+                                tux_say("I had an error processing that.")
+                        else:
+                            # Fallback if LLM failed to load
+                            tux_say(f"I heard you say: {prompt}")
                             
             else:
-                # Partial result
                 pass
 
     except KeyboardInterrupt:
         print("\nExiting...")
-        tux_drv.Stop()
-
     except Exception as e:
-        print(f"Error: {e}")
-        tux_drv.Stop()
+        print(f"Main Loop Error: {e}")
+    finally:
+        if tux_drv:
+            tux_drv.Stop()
+        print("Goodbye!")
 
 if __name__ == '__main__':
     main()
