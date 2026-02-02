@@ -48,11 +48,11 @@ static simple_callback_t end_cycle_funct;
 static simple_callback_t dongle_connected_funct;
 static simple_callback_t dongle_disconnected_funct;
 
-static void on_frame(const unsigned char *data);
-static void on_rf_state(unsigned char state);
-static void on_usb_connect(void);
-static void on_usb_disconnect(void);
-static void on_read_loop_cycle_complete(void);
+void on_frame(const unsigned char *data);
+void on_rf_state(unsigned char state);
+void on_usb_connect(void);
+void on_usb_disconnect(void);
+void on_read_loop_cycle_complete(void);
 
 void TuxDrv_ResetPositions(void);
 
@@ -145,7 +145,7 @@ TuxDrv_SetDongleDisconnectedCallback(simple_callback_t funct)
  *  Callback function on frame receiving.
  *  @param data 4 bytes array of status.
  */
-static void
+void
 on_frame(const unsigned char *data)
 {
     unsigned char header;
@@ -264,7 +264,7 @@ on_frame(const unsigned char *data)
  *  Callback function on radio state changed.
  *  @param state state of the radio connection.
  */
-static void
+void
 on_rf_state(unsigned char state)
 {
     tux_sw_status_set_intvalue(SW_ID_RF_STATE, state, true);
@@ -281,7 +281,7 @@ on_rf_state(unsigned char state)
 /**
  *  Callback function on fux dongle plugging.
  */
-static void
+void
 on_usb_connect(void)
 {
     data_frame wakeup_frame = {0xB6, 0xFF, 0x01, 0x00};
@@ -308,7 +308,7 @@ on_usb_connect(void)
 /**
  *  Callback function on fux dongle unplugging.
  */
-static void
+void
 on_usb_disconnect(void)
 {
     tux_sw_status_set_intvalue(SW_ID_RF_STATE, false, true);
@@ -322,7 +322,7 @@ on_usb_disconnect(void)
 /**
  *  Callback function on end of a cycle of usb read.
  */
-static void
+void
 on_read_loop_cycle_complete(void)
 {
     tux_user_inputs_update_RC5();

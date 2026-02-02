@@ -47,6 +47,7 @@ SRC_OBJS = \
   $(OBJ_DIR)/tux_usb.o	\
   $(OBJ_DIR)/tux_user_inputs.o	\
   $(OBJ_DIR)/tux_flippers.o	\
+  $(OBJ_DIR)/tux_driver_nonblocking.o	\
   $(OBJ_DIR)/log.o
 
 .PHONY: make clean
@@ -78,6 +79,8 @@ make:
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_usb.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_usb.o
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_user_inputs.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_user_inputs.o
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_flippers.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_flippers.o
+	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_driver_nonblocking.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_driver_nonblocking.o
+
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/log.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/log.o
 	$(CC) -o "$(OUTPUT_DIR)$(TARGET)" $(SRC_OBJS) $(LIB_DIRS) $(LIBS) $(LDFLAGS)
 	-@ar rcs $(OUTPUT_DIR)/libtuxdriver.a $(SRC_OBJS)
