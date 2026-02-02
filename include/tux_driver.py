@@ -193,7 +193,13 @@ class TuxDrv(object):
         if self.tux_driver_lib == None:
             return
             
-        self.tux_driver_lib.TuxDrv_Start()
+        import threading
+        import time
+        self.start_thread = threading.Thread(target=self.tux_driver_lib.TuxDrv_Start)
+        self.start_thread.daemon = True
+        self.start_thread.start()
+        # Give it a moment to initialize
+        time.sleep(1)
         
     def Stop(self): 
         if self.tux_driver_lib == None:

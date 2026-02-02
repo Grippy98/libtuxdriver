@@ -14,6 +14,15 @@ LIB_DIRS =
 LIBS = -lpthread -lm
 LDFLAGS = -pipe -shared
 
+ifeq ($(USE_LIBUSB), 1)
+  HID_OBJ = $(OBJ_DIR)/tux_hid_libusb.o
+  HID_SRC = $(SRC_DIR)/tux_hid_libusb.c
+  LIBS += -lusb-1.0
+else
+  HID_OBJ = $(OBJ_DIR)/tux_hid_unix.o
+  HID_SRC = $(SRC_DIR)/tux_hid_unix.c
+endif
+
 SRC_OBJS = \
   $(OBJ_DIR)/tux_battery.o	\
   $(OBJ_DIR)/tux_cmd_parser.o	\
@@ -21,7 +30,7 @@ SRC_OBJS = \
   $(OBJ_DIR)/tux_error.o	\
   $(OBJ_DIR)/tux_eyes.o	\
   $(OBJ_DIR)/tux_firmware.o	\
-  $(OBJ_DIR)/tux_hid_unix.o	\
+  $(HID_OBJ)	\
   $(OBJ_DIR)/tux_hw_status.o	\
   $(OBJ_DIR)/tux_id.o	\
   $(OBJ_DIR)/tux_leds.o	\
@@ -52,7 +61,7 @@ make:
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_error.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_error.o
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_eyes.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_eyes.o
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_firmware.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_firmware.o
-	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_hid_unix.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_hid_unix.o
+	$(CC) -c $(CFLAGS) $(HID_SRC) $(C_INCLUDE_DIRS) -o $(HID_OBJ)
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_hw_status.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_hw_status.o
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_id.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_id.o
 	$(CC) -c $(CFLAGS) $(SRC_DIR)/tux_leds.c $(C_INCLUDE_DIRS) -o $(OBJ_DIR)/tux_leds.o
