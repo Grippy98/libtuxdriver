@@ -88,3 +88,23 @@ __attribute__((visibility("default"))) void TuxDrv_StopNonBlocking(void) {
   tux_usb_exit_module();
   driver_initialized = false;
 }
+
+/**
+ * Get a status value string by name.
+ * @param name The name of the status to retrieve.
+ * @param str_val Buffer to store the result (should be at least 128 bytes).
+ * @return 0 on success, error code otherwise.
+ */
+__attribute__((visibility("default"))) int
+TuxDrv_GetStatusString(const char *name, char *str_val) {
+  if (!driver_initialized || !name || !str_val)
+    return -1;
+
+  int id = -1;
+  if (tux_sw_status_id_from_name(name, &id) == 0) { // E_TUXDRV_NOERROR is 0
+    if (tux_sw_status_get_value_str(id, str_val) == 0) {
+      return 0;
+    }
+  }
+  return -1;
+}

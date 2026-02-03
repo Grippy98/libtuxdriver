@@ -110,6 +110,9 @@ class TuxDrv(object):
             self._poll_once = self.tux_driver_lib.func("v", "TuxDrv_PollOnce", "")
             self._stop_nonblocking = self.tux_driver_lib.func("v", "TuxDrv_StopNonBlocking", "")
             
+            # Helper to get status
+            self._get_status_str = self.tux_driver_lib.func("i", "TuxDrv_GetStatusString", "sp")
+
         except Exception as e:
             print(f"Error loading libtuxdriver: {e}")
             self.tux_driver_lib = None
@@ -137,6 +140,19 @@ class TuxDrv(object):
             return True
         except:
             return False
+
+    def GetAttribute(self, name):
+        """Get a status attribute string value by name."""
+        if not self.tux_driver_lib: return None
+        try:
+            buf = bytearray(128)
+            ret = self._get_status_str(name, buf)
+            if ret == 0:
+                s = buf.decode('utf-8').split('\x00')[0]
+                return s
+        except:
+            pass
+        return None
 
     def Poll(self):
         """Poll for USB events - should be called periodically."""
